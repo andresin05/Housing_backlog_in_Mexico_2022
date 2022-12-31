@@ -1,0 +1,427 @@
+---
+title: '"Rezago habitacional en México: 2022"'
+author: "José Andrés Parra Caporal"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```{r echo=FALSE}
+library(reticulate)
+library(knitr)
+```
+
+```{python include=FALSE}
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Dec 29 17:52:57 2022
+
+@author: ja
+"""
+
+import pandas as pd
+import geopandas as gpd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Tareas
+
+    # Microdatos INEGI cuadro Viviendas tercer trimestre 2022
+ENIGH_2022 = pd.read_csv('/home/ja/Descargas/enigh2020_ns_viviendas_csv/viviendas.csv', encoding='unicode_escape',low_memory = False)
+
+
+    # Estimar el número de viviendas con rezago habiacional a niver nacional y por entidad federativa de acuerdo con la metodología de la Conavi
+vivienda = ["ï»¿folioviv","factor"]
+        # Identificación de las viviendas por sus materiales en paredes, en techo y pisos.
+        
+materiales = ["mat_pared",
+              "mat_techos",
+              "mat_pisos"]
+        
+        # Residentes por cuarto en cada vivienda
+residentes = ["tot_resid",
+              "num_cuarto"]
+
+        # Excusado
+excusado = ["excusado"]
+
+selección = vivienda + materiales +  residentes + excusado
+
+ENIGH_2022 = ENIGH_2022[selección]
+
+del excusado, materiales, residentes, selección, vivienda  
+
+        # Cálculo
+            # Materiales deteriorados
+pared_det = list(np.where(ENIGH_2022["mat_pared"].isin([1,2,4,5,9]),1,0))
+
+techo_det = list(np.where(ENIGH_2022["mat_techos"].isin([1,2,6,99]),1,0))
+
+mat_det = [1 if i==1 or j==1 else 0 for i,j in zip(pared_det,techo_det)]
+
+del pared_det, techo_det
+
+            # Materiales regulares
+pared_reg = list(np.where(ENIGH_2022["mat_pared"].isin([3,6]),1,0))
+
+techo_reg = list(np.where(ENIGH_2022["mat_techos"].isin([3,4,7,9]),1,0))
+
+piso_reg = list(np.where(ENIGH_2022["mat_pisos"].isin([1,9]),1,0))
+
+mat_reg = [1 if h==1 or i==1 or j==1 else 0 for h,i,j in zip(pared_reg,techo_reg,piso_reg)]
+
+del pared_reg, techo_reg, piso_reg
+
+            # Precariedad del espacio de vivienda
+res_cuarto = ENIGH_2022["tot_resid"]/ENIGH_2022["num_cuarto"]
+
+hacin = [1 if i > 2.5 else 0 for i in res_cuarto]
+
+excu = list(np.where(ENIGH_2022["excusado"].eq(1),0,1))
+
+prec_esp = [1 if  i==1 or j==1 else 0 for i,j in zip(hacin,excu)]
+
+del res_cuarto, hacin, excu
+
+### Rezago ###
+
+rezago = [1 if h==1 or i==1 or j==1 else 0 for h,i,j in zip(mat_det,mat_reg,prec_esp)]
+rezago = pd.DataFrame(rezago)
+
+# Presentación de los resultados
+conavi_rez = pd.concat([ENIGH_2022[["ï»¿folioviv","factor"]],rezago], axis = 1)
+conavi_rez.columns = ["folioviv","factor","rezago"]
+
+conavi_rez["rezago"] = conavi_rez["rezago"].astype("category")
+conavi_rez["rezago"] = conavi_rez["rezago"].cat.rename_categories({0:"sin rezago habitacional",
+                                                                   1:"con rezago habitacional"})
+
+conavi_rez["mat_det"] = mat_det
+conavi_rez["mat_det"] = conavi_rez["mat_det"].astype("category")
+conavi_rez["mat_det"] = conavi_rez["mat_det"].cat.rename_categories({0:"sin materiales deteriorados",
+                                                                     1:"con materiales deteriorados"})
+
+
+conavi_rez["mat_reg"] = mat_reg
+conavi_rez["mat_reg"] = conavi_rez["mat_reg"].astype("category")
+conavi_rez["mat_reg"] = conavi_rez["mat_reg"].cat.rename_categories({0:"sin materiales regulares",
+                                                                     1:"con materiales regulares"})
+
+conavi_rez["prec_esp"] = prec_esp
+conavi_rez["prec_esp"] = conavi_rez["prec_esp"].astype("category")
+conavi_rez["prec_esp"] = conavi_rez["prec_esp"].cat.rename_categories({0:"sin precariedad en los espacios",
+                                                                       1:"con precariedad en los espacios"})
+  
+del mat_det, mat_reg, prec_esp, rezago
+    # Rezago a nivel nacional
+plt.style.use("fivethirtyeight")
+    # Cuadro con el número de viviendas totales, con rezago habitacional y el porcentaje de viviendas con rezago habitacional
+
+conavi_rez["folioviv"] = conavi_rez["folioviv"].astype("str")
+conavi_rez["folioviv"] = [i.zfill(10) for i in conavi_rez["folioviv"]]
+
+conavi_rez["estados"] = [i[0:2] for i in conavi_rez.folioviv]
+conavi_rez["estados"] = conavi_rez["estados"].astype("int64")
+
+estados = [conavi_rez["estados"] == 1,
+           conavi_rez["estados"] == 2,
+           conavi_rez["estados"] == 3,
+           conavi_rez["estados"] == 4,
+           conavi_rez["estados"] == 5,
+           conavi_rez["estados"] == 6,
+           conavi_rez["estados"] == 7,
+           conavi_rez["estados"] == 8,
+           conavi_rez["estados"] == 9,
+           conavi_rez["estados"] == 10,
+           conavi_rez["estados"] == 11,
+           conavi_rez["estados"] == 12,
+           conavi_rez["estados"] == 13,
+           conavi_rez["estados"] == 14,
+           conavi_rez["estados"] == 15,
+           conavi_rez["estados"] == 16,
+           conavi_rez["estados"] == 17,
+           conavi_rez["estados"] == 18,
+           conavi_rez["estados"] == 19,
+           conavi_rez["estados"] == 20,
+           conavi_rez["estados"] == 21,
+           conavi_rez["estados"] == 22,
+           conavi_rez["estados"] == 23,
+           conavi_rez["estados"] == 24,
+           conavi_rez["estados"] == 25,
+           conavi_rez["estados"] == 26,
+           conavi_rez["estados"] == 27,
+           conavi_rez["estados"] == 28,
+           conavi_rez["estados"] == 29,
+           conavi_rez["estados"] == 30,
+           conavi_rez["estados"] == 31,
+           conavi_rez["estados"] == 32]
+
+conavi_rez["estados"] = np.select(estados,["Aguascalientes",
+                                 "Baja California",
+                                 "Baja California Sur",
+                                 "Campeche",
+                                 "Coahuila de Zaragoza",
+                                 "Colima",
+                                 "Chiapas",
+                                 "Chihuahua",
+                                 "Ciudad de México",
+                                 "Durango",
+                                 "Guanajuato",
+                                 "Guerrero",
+                                 "Hidalgo",
+                                 "Jalisco",
+                                 "México",
+                                 "Michoacán de Ocampo",
+                                 "Morelos",
+                                 "Nayarit",
+                                 "Nuevo León",
+                                 "Oaxaca",
+                                 "Puebla",
+                                 "Querétaro",
+                                 "Quintana Roo",
+                                 "San Luis Potosí",
+                                 "Sinaloa",
+                                 "Sonora",
+                                 "Tabasco",
+                                 "Tamaulipas",
+                                 "Tlaxcala",
+                                 "Veracruz de Ignacio de la Llave",
+                                 "Yucatán",
+                                 "Zacatecas"])
+
+del estados
+
+    # Tabla rezagos
+estados_conavi_rez = pd.DataFrame(conavi_rez.groupby(["estados","rezago"])["factor"].sum())
+estados_conavi_rez.columns = ["Viviendas"]
+estados_conavi_rez = estados_conavi_rez.reset_index()
+
+estados_conavi_con_rez = estados_conavi_rez[estados_conavi_rez["rezago"] == "con rezago habitacional"]
+estados_conavi_con_rez = estados_conavi_con_rez[["estados","Viviendas"]]
+estados_conavi_con_rez = estados_conavi_con_rez.set_index("estados")
+
+estados_conavi_sin_rez = estados_conavi_rez[estados_conavi_rez["rezago"] == "sin rezago habitacional"]
+estados_conavi_sin_rez = estados_conavi_sin_rez[["estados","Viviendas"]]
+estados_conavi_sin_rez = estados_conavi_sin_rez.set_index("estados")
+
+estados_conavi_rez = pd.concat([estados_conavi_con_rez,estados_conavi_sin_rez], axis = 1)
+estados_conavi_rez.columns = ["Con rezago","Sin rezago"]
+estados_conavi_rez.insert(0, "Viviendas", estados_conavi_rez["Con rezago"] + estados_conavi_rez["Sin rezago"])
+estados_conavi_rez["% con rezago"] = (estados_conavi_rez["Con rezago"]/estados_conavi_rez["Viviendas"])*100
+estados_conavi_rez = estados_conavi_rez.sort_values("% con rezago", ascending = False)
+
+del estados_conavi_con_rez, estados_conavi_sin_rez
+    
+    # Tabla materiales deteriorados
+estados_conavi_mat_det = pd.DataFrame(conavi_rez.groupby(["estados","mat_det"])["factor"].sum())
+estados_conavi_mat_det.columns = ["Viviendas"]
+estados_conavi_mat_det = estados_conavi_mat_det.reset_index()
+
+estados_conavi_con_mat_det = estados_conavi_mat_det[estados_conavi_mat_det["mat_det"] == "con materiales deteriorados"]
+estados_conavi_con_mat_det = estados_conavi_con_mat_det[["estados","Viviendas"]]
+estados_conavi_con_mat_det = estados_conavi_con_mat_det.set_index("estados")
+
+estados_conavi_sin_mat_det = estados_conavi_mat_det[estados_conavi_mat_det["mat_det"] == "sin materiales deteriorados"]
+estados_conavi_sin_mat_det = estados_conavi_sin_mat_det[["estados","Viviendas"]]
+estados_conavi_sin_mat_det = estados_conavi_sin_mat_det.set_index("estados")
+
+estados_conavi_mat_det = pd.concat([estados_conavi_con_mat_det,estados_conavi_sin_mat_det], axis = 1)
+estados_conavi_mat_det.columns = ["Con deterioro","Sin deterioro"]
+estados_conavi_mat_det.insert(0, "Viviendas", estados_conavi_mat_det["Con deterioro"] + estados_conavi_mat_det["Sin deterioro"])
+estados_conavi_mat_det["% con deterioro"] = (estados_conavi_mat_det["Con deterioro"]/estados_conavi_mat_det["Viviendas"])*100
+estados_conavi_mat_det = estados_conavi_mat_det.sort_values("% con deterioro", ascending = False)
+
+del estados_conavi_con_mat_det, estados_conavi_sin_mat_det
+
+    # Tabla de materiales regulares
+estados_conavi_mat_reg = pd.DataFrame(conavi_rez.groupby(["estados","mat_reg"])["factor"].sum())
+estados_conavi_mat_reg.columns = ["Viviendas"]
+estados_conavi_mat_reg = estados_conavi_mat_reg.reset_index()
+
+estados_conavi_con_mat_reg = estados_conavi_mat_reg[estados_conavi_mat_reg["mat_reg"] == "con materiales regulares"]
+estados_conavi_con_mat_reg = estados_conavi_con_mat_reg[["estados","Viviendas"]]
+estados_conavi_con_mat_reg = estados_conavi_con_mat_reg.set_index("estados")
+
+estados_conavi_sin_mat_reg = estados_conavi_mat_reg[estados_conavi_mat_reg["mat_reg"] == "sin materiales regulares"]
+estados_conavi_sin_mat_reg = estados_conavi_sin_mat_reg[["estados","Viviendas"]]
+estados_conavi_sin_mat_reg = estados_conavi_sin_mat_reg.set_index("estados")
+
+estados_conavi_mat_reg = pd.concat([estados_conavi_con_mat_reg,estados_conavi_sin_mat_reg], axis = 1)
+estados_conavi_mat_reg.columns = ["Con material regular","Sin material regular"]
+estados_conavi_mat_reg.insert(0, "Viviendas", estados_conavi_mat_reg["Con material regular"] + estados_conavi_mat_reg["Sin material regular"])
+estados_conavi_mat_reg["% con material regular"] = (estados_conavi_mat_reg["Con material regular"]/estados_conavi_mat_reg["Viviendas"])*100
+estados_conavi_mat_reg = estados_conavi_mat_reg.sort_values("% con material regular", ascending = False)
+
+del estados_conavi_con_mat_reg, estados_conavi_sin_mat_reg
+
+    # Tabla de precariedad en los espacios
+estados_conavi_prec_esp = pd.DataFrame(conavi_rez.groupby(["estados","prec_esp"])["factor"].sum())
+estados_conavi_prec_esp.columns = ["Viviendas"]
+estados_conavi_prec_esp = estados_conavi_prec_esp.reset_index()
+
+estados_conavi_con_prec_esp = estados_conavi_prec_esp[estados_conavi_prec_esp["prec_esp"] == "con precariedad en los espacios"]
+estados_conavi_con_prec_esp = estados_conavi_con_prec_esp[["estados","Viviendas"]]
+estados_conavi_con_prec_esp = estados_conavi_con_prec_esp.set_index("estados")
+
+estados_conavi_sin_prec_esp = estados_conavi_prec_esp[estados_conavi_prec_esp["prec_esp"] == "sin precariedad en los espacios"]
+estados_conavi_sin_prec_esp = estados_conavi_sin_prec_esp[["estados","Viviendas"]]
+estados_conavi_sin_prec_esp = estados_conavi_sin_prec_esp.set_index("estados")
+
+estados_conavi_prec_esp = pd.concat([estados_conavi_con_prec_esp,estados_conavi_sin_prec_esp], axis = 1)
+estados_conavi_prec_esp.columns = ["Con precariedad","Sin precariedad"]
+estados_conavi_prec_esp.insert(0, "Viviendas", estados_conavi_prec_esp["Con precariedad"] + estados_conavi_prec_esp["Sin precariedad"])
+estados_conavi_prec_esp["% con precariedad"] = (estados_conavi_prec_esp["Con precariedad"]/estados_conavi_prec_esp["Viviendas"])*100
+estados_conavi_prec_esp = estados_conavi_prec_esp.sort_values("% con precariedad", ascending = False)
+
+del estados_conavi_con_prec_esp, estados_conavi_sin_prec_esp
+```
+
+<h1>Resumen</h1>
+
+<p align="justify"> 
+En este trabajo se presenta el cálculo del Rezago Habitacional 2022. La información utilizada corresponde a la ENIGH del Instituto Nacional de Estadística y Geografía (INEGI) en su edición 2022. La metodología utilizada para el cálculo es conforme a los criterios publicados por la CONAVI. De igual forma se presentan los resultados estadísticos para cada uno de los componentes que conforman el rezago habitacional para dar un mejor contexto en su determinación.
+</p>
+
+<h1>Metodología utilizada</h1>
+
+<p align="justify">
+Se considera que una vivienda está en situación de rezago habitacional cuando se cumplen por lo menos una de las siguientes características:
+</p>
+
+- La vivienda se compone se materiales deteriorados.
+- La vivienda se compone de materiales regulares.
+- La vivienda tiene espacios precarios.
+
+
+<h2>Materiales deteriorados</h2>
+
+<p align="justify">
+Se considera que una vivienda tiene materiales deteriorados si sus paredes se conforman por cualquiera de los siguientes materiales: Material de desecho, lámina de cartón, carrizo, bambú o palma. O si su techo esta hecho de palma o paja, lámina de cartón o material de desecho. En términos de la codificación de las variables de la ENIGH en su cuadro de vivienda (*mat_pared* y *mat_techos*), las condiciones son las siguientes:
+</p>
+
+$$pared_{det} = 1 \Rightarrow mat_{pared} = \{1,2,4,5,9\} $$
+$$techo_{det} = 1 \Rightarrow mat_{techos} = \{1,2,6,99\} $$
+<p align="justify">
+Considerando que una vivienda se constituye de materiales deteriorados si:
+</p>
+
+$$mat_{det} = 1 \Rightarrow pared_{det} = 1 | techo_{det} = 1 $$
+<h2>Materiales regulares</h2>
+
+<p align="justify">
+Una vivienda se compone de materiales regulares si sus paredes están hechas de lámina de asbesto o metálica o de madera. O si el techo se conforma por lámina metálica, por lamina de asbesto, por material de teja o tejaminil o por teja. Si el piso es de tierra cabe dentro de la categoría de materiales regulares. Conforme a la codificación de las variables de la ENIGH (*mat_pared*,*mat_techos* y *mat_pisos*), las condiciones son:
+</p>
+
+$$pared_{reg} = 1 \Rightarrow mat_{pared} = \{3,6\} $$
+
+$$techo_{reg} = 1 \Rightarrow mat_{techos} = \{3,4,7,9\} $$
+
+$$piso_{det} = 1 \Rightarrow mat_{pisos} = \{1,9\} $$
+
+<p align="justify">
+Considerando que una vivienda se constituye de materiales regulares si:
+</p>
+
+$$mat_{reg} = 1 \Rightarrow pared_{reg} = 1 | techo_{reg} = 1 | piso_{reg} = 1 $$
+<h2>Precariedad en los espacios</h2>
+
+<p align="justify">
+Una vivienda tiene espacios precarios si la vivienda se encuentra en una condición de hacinamiento, es decir, cuando el número de habitantes por cuarto es mayor a 2.5.  El segundo elemento es el servicio sanitario, si se cuenta o no con taza de baño.
+</p>
+
+<p align="justify">
+Para calcular el hacinamiento primero se calculan los residentes promedio por cada cuarto.
+</p>
+
+$$res_{cuarto} = \frac{residentes}{cuartos}$$
+
+<p align="justify">
+Por lo que la condición de hacinamiento es la siguiente:
+</p>
+
+$$hacin = 1 \Rightarrow res_{cuarto} > 2.5 $$
+
+<p align="justify">
+Si una persona carece de escusado (si la variable *excusado* es igual a 0) se considera como una vivienda con espacios precarios. Teniendo esto en cuenta, la precariedad de los espacios se calcula como sigue:
+</p>
+
+$$prec_{esp} = 1 \Rightarrow hacin =1 | excusado = 0$$
+<h2>Rezago de vivienda</h2>
+
+<p align="justify">
+Como se mencionó anteriormente, para calcular el rezago habitacional se consideran las tres dimensiones en los vectores calculados: *mat_det*, *mat_reg* y *prec_esp*.
+</p>
+
+$$rezago = 1 \Rightarrow mat_{det} = 1 | mat_{reg} = 1 | prec_{esp} = 1 $$
+
+<h1>Resultados</h1>
+
+<h2>Rezago habitacional</h2>
+```{r Rezago, echo=FALSE}
+knitr::include_graphics("/home/ja/Documentos/plot_1.png")
+```
+
+
+```{r M_Rezago, echo=FALSE}
+knitr::include_graphics("/home/ja/Documentos/map_1.png")
+```
+
+```{r T_Rezago, echo=FALSE}
+kable(py$estados_conavi_rez,
+      digits = 2,
+      align = "r",
+      caption = "Viviendas en condición de rezago habitacional")
+```
+
+<h2>Viviendas con materiales deteriorados</h2>
+
+```{r Deteriorado, echo=FALSE}
+knitr::include_graphics("/home/ja/Documentos/plot_2.png")
+```
+
+```{r M_Deteriorado, echo=FALSE}
+knitr::include_graphics("/home/ja/Documentos/map_2.png")
+```
+
+```{r T_Deteriorado, echo=FALSE}
+kable(py$estados_conavi_mat_det,
+      digits = 2,
+      align = "r",
+      caption = "Viviendas con elementos de materiales deteriorados")
+```
+
+<h2>Viviendas con materiales regulares</h2>
+```{r Regulares, echo=FALSE}
+knitr::include_graphics("/home/ja/Documentos/plot_3.png")
+```
+
+```{r M_Regulares, echo=FALSE}
+knitr::include_graphics("/home/ja/Documentos/map_3.png")
+```
+
+```{r T_Regulares, echo=FALSE}
+kable(py$estados_conavi_mat_reg,
+      digits = 2,
+      align = "r",
+      caption = "Viviendas con elementos de materiales regulares")
+```
+
+<h2>Viviendas con precariedad en espacios</h2>
+```{r Espacios, echo=FALSE}
+knitr::include_graphics("/home/ja/Documentos/plot_4.png")
+```
+
+```{r M_Espacios, echo=FALSE}
+knitr::include_graphics("/home/ja/Documentos/map_4.png")
+```
+
+```{r T_Espacios, echo=FALSE}
+kable(py$estados_conavi_prec_esp,
+      digits = 2,
+      align = "r",
+      caption = "Viviendas con espacios precarios")
+```
+
+<h1>Comentarios</h2>
+<p align="justify">
+El total de viviendas que se consideran en esta muestra son cerca de 35.2 millones, encontrandose 24.8% en condición de rezago habitacional. Las zona sur del país peseta un nivel relativamente más alto de esta métrica: Chiapas, Tabasco, Oaxaca y Guerrero son los estados que presentan una mayor proporción de rezago habitacional, siendo para todos estos estados una proporción mayor al 50% de las viviendas cuyos materiales son deteriorados o regulares, o que tienen espacios de vivienda precarios.
+</p>
